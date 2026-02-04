@@ -1,0 +1,65 @@
+trigger:
+    - main
+
+pool:
+    name: Default
+    vmImage: "ubuntu-latest"
+
+variables:
+    # replace by the name of you App Service
+    appName: "projet-DevOps"
+    # replace by your azure subscription !
+    # sommething like Azure for Students(a6b57087-18b9-45fsdf)
+    azureSubscription: "Azure for Students (2c8ad83f-c617-417c-8fcc-b4cfca8a4577)"
+
+steps:
+    - task: NodeTool@0
+      inputs:
+          versionSpec: "20.x"
+      displayName: "Install Node.js"
+
+    - script: npm install
+      displayName: "Install Dependencies"
+
+    - script: npm run prettier:check
+      displayName: "Run Prettier check to check that files are correctly formatted"
+      condition: succeeded()
+
+    - script: npm run lint
+      displayName: "Run eslint to check for error"
+      condition: succeeded()
+
+    - script: npm run test
+      displayName: "Run Jest tests"
+
+    - task: PublishTestResults@2
+      condition: succeededOrFailed()
+      inputs:
+          testResultsFormat: "JUnit"
+          testResultsFiles: "**/junit.xml"
+          failTaskOnFailedTests: true
+      displayName: "Publish Results on Azure DevOps interface"
+
+    - script: npm run build
+      displayName: "Build the project"
+      condition: succeeded() # Build si seulement les tests sont passés
+
+    - task: ArchiveFiles@2
+      inputs:
+          rootFolderOrFile: "$(System.DefaultWorkingDirectory)"
+          includeRootFolder: false
+          archiveType: "zip"
+          archiveFile: "$(Build.ArtifactStagingDirectory)/app.zip"
+          replaceExistingArchive: true
+      condition: succeeded() # Archive seulement si tout a réussi avant
+
+    - task: AzureRmWebAppDeployment@5
+      inputs:
+          ConnectionType: "AzureRM"
+          azureSubscription: "$(azureSubscription)"
+          appType: "webAppLinux"
+          WebAppName: "$(appName)"
+          packageForLinux: "$(Build.ArtifactStagingDirectory)/app.zip"
+          DeploymentTypeLinux: "oneDeploy"
+      displayName: "Deploy to Azure App Service"
+      condition: succeeded() # Déploie uniquement si tout a réussi (tests inclus)
